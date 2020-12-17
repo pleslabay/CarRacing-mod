@@ -1,0 +1,3 @@
+Please place this file on your gym installation directory
+
+..\anaconda3\envs\<your-env>\Lib\site-packages\gym\envs

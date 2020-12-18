@@ -6,6 +6,7 @@ This environment provides a modified openAI Gym CarRacing environment allowing a
 The four car_racing___.py files define different world environments, and are registered to gym:
 
 CarRacing-v0 is the original implementation
+
 CarRacing-v1 only changes the action space to a 5 actions discrete set (see below for details)
 
 CarRacing-v2 is my modified version including discrete actions, reward functions, frame_stacking, frame_skipping, track reuse, starting points, track geometry, indicators, and more

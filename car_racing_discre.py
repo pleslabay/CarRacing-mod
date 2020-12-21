@@ -111,7 +111,8 @@ class FrictionDetector(contactListener):
 class CarRacing(gym.Env, EzPickle):
     metadata = {
         'render.modes': ['human', 'rgb_array', 'state_pixels'],
-        'video.frames_per_second' : FPS
+        'discretization': ACT,
+        'simul.frames_per_second' : FPS
     }
 
     def __init__(self, verbose=1):

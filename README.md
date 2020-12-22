@@ -50,6 +50,10 @@ Sorry for that, but is way faster than any wheel implementation...
 
 # Usage
 
+The original envs CarRacing-v0 and -v1 work with a physics core at 50 frames/sec (FPS), but do not need to be real-time. Meaning that you would really like your hardware to produce more than 50fps when training!
+In order to decrease the training time, I experimented with *car_dynamics* and could get it to work properly @33FPS in CarRacing-v2 and -v3.
+So be aware that a trained agent will probably take wrong decisions when crossing environments.
+
 CarRacing-v2 and -v3 provide a set of customization parameters, as follows:
 ```
 env = gym.make('CarRacing-v2',
@@ -66,7 +70,8 @@ env = gym.make('CarRacing-v2',
         f_reward = STD_REWARD,   # reward function coefficients, refer to Docu for details
         verbose = 1      )
 ```
-The user can replace ACT and STD_REWARD with custom np.arrays, in order to adapt *discre* and *f_reward* to his needs.
+All the shown values represent the default configuration, making -v2 almost equal to -v1. It makes sense to change and play around with these parameters!
+The user can replace ACT and STD_REWARD with custom np.arrays, in order to adapt *discre* and *f_reward* to his/her needs.
 
 ### Track generation and complexity
 Each track starts as a full circle of predetermined radius, and gets divided in `tr_complexity` equal angular segments. Then these segments are radially randomly moved from 1/3 to 1 of radius. Finally a loop connects the dots, fits curves and retries until some geometric error allowance is achieved.
@@ -104,7 +109,7 @@ For this environment I propose a fixed, parameterized reward function --> no scr
 By selecting 9 parameters you can change the reward function behavior, as follows:
 `SR = [a, b, c, d, e, f, g, h, i]`
 
-After each step: `reward = a + b * dist_center + c * car_vel_mag + d * steer_angle` representing penalties for: 
+After each step: `reward = a + b * dist_center + c * car_vel_mag + d * abs(car_steer_angle)` representing penalties for: 
 * each step taken 
 * distance to track's centerline, `dist_center = (1 - dist_to_nearest_waypoint / track_width)`, clipped to +-1
 * car lineal speed magnitude 
@@ -115,13 +120,13 @@ Each time a new tile is reached: `reward = reward + e * 100 / n_tiles`
 At episode end: the step reward gets *overwritten* following one of these conditions:
 * `reward = f` when track is finished, meaning all track tiles have been touched. Beware that driving on the grass does not touch the nearby tile!!!
 * `reward = g` when patience is exceeded, meaning the game executed `patience * FPS`steps without touching a new tile
-* `reward = h` when the car gets out of bounds
+* `reward = h` when the car gets out of play-bounds
 * `reward = i` when the episode exceeds 1000 steps (2000 for -v3) without finishing the track
 
 For example, the original CarRacing-v0 and -v1 reward function looks like this:
 `GYM_REWARD = [-0.1, 0.0, 0.0, 0.0, 10.0, 0,   0,  -100, 0]`
 
-I set a slight modification as the std reward function for -v2:
+I set a slight modification as the std reward function for -v2, following gym spirit:
 `STD_REWARD = [-0.1, 0.0, 0.0, 0.0, 1.0, 100, -20, -100, -50]`
 
 Beware neither of these are great selections, **you** should play around to understand the importance of reward functions!!

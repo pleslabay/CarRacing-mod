@@ -64,7 +64,7 @@ FPS        = 1/0.03       # Simulation Frames per second, timebase
 ### Discretization
 ## after investigating car_dynamics, is my understanding this model will really work BADLY in continous mode...
 # physics model control actions, can be simultaneous => steering_angle, gas (throttle), brake_level
-# due to car_dynamics setup, d(gas)/dt is limited to 0.1 per Frame, braking >0.9 blocks wheels, only friction limited (1) currently
+# due to car_dynamics setup, d(gas)/dt is limited to 0.1 per Frame, braking >=0.9 blocks wheels, only friction limited (1) currently
 # due to car_dynamics, steering saturates @+-0.4; it takes 7 steps to fully turn wheels either side from center @ steering >= 0.4
 # due to car_dynamics, the car presents lots of wheelspin. Gas < 1 might be a faster way to accelerate the car.
 
@@ -598,7 +598,7 @@ class CarRacing2(gym.Env, EzPickle):
         #self.state[:,:,0] = self.render("state_pixels") # Old code, only one frame
         self._update_state(self.render("state_pixels"))
 
-        ##REWARDS 
+   ##REWARDS 
         # reward given each step: step, distance to centerline, speed, steer angle
         # reward given on new tile: % of advance
         # reward given at episode end: finished, patience exceeded, out of bounds, steps exceeded
@@ -617,7 +617,7 @@ class CarRacing2(gym.Env, EzPickle):
         step_reward += self.f_reward[2]*true_speed
 
         #reward for steer angle
-        step_reward += self.f_reward[3]*self.car.wheels[0].joint.angle
+        step_reward += self.f_reward[3]*abs(self.car.wheels[0].joint.angle)
         
         #reward new tile touched
         if self.newtile:        
@@ -627,11 +627,11 @@ class CarRacing2(gym.Env, EzPickle):
         ## calculates reward penalties, showstopper
         # check touched all tiles, to finish
         if self.tile_visited_count==len(self.track):
-            step_reward += self.f_reward[5]
+            step_reward = self.f_reward[5]
             done = True
             if self.verbose > 0:
                 print(self.track_use, " Finalized in Steps", self.steps_in_episode, 
-                      " with return=total reward", self.ep_return+step_reward)
+                      " with return=total_reward", self.ep_return+step_reward)
 
         # if too many seconds lacking progress
         if self.t - self.last_touch_with_track > self.patience:

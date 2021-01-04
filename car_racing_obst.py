@@ -19,13 +19,12 @@ From left to right: internal reward, true speed, steering wheel position and gyr
 
 To play yourself (it's rather fast for humans), type:
 
-python gym/envs/box2d/car_racing.py
+python gym/envs/box2d/car_racing_pab.py
 
 Remember it's a powerful rear-wheel drive car -  don't press the accelerator and turn at the same time.
 
 Created by Oleg Klimov. Licensed on the same terms as the rest of OpenAI Gym.
-Substantial modifications by Pablo, posibly incompatible to original
-######
+Substantial modifications by Pablo Leslabay, posibly incompatible to original
 
 """
 
@@ -45,7 +44,7 @@ from pyglet import gl
 from PIL import Image
 
 
-##Some of this values are parameters overwriteable on __init__
+##SOME of this values are parameters that can be overwritten on __init__
 # state frame and view/render size
 STATE_W = 96  # less than Atari 160x192
 STATE_H = 96
@@ -53,56 +52,68 @@ VIDEO_W = 400
 VIDEO_H = 400
 WINDOW_W = 400
 WINDOW_H = 400
-ZOOM_START  = False        # Set to True for flying start zoom
+ZOOM_START  = False       # Set to True for flying start zoom
 TRACK_ZOOM  = 1           # Zoom for complete trackoverview
-ZOOM        = 1.7         # Racing Camera zoom
-TRACK_FIRST = False        # Set to True for whole track on first render
-MAX_TIME_NEW_TILE = 2.0   # limits allowed time (n*FPS) without progress
+ZOOM        = 1.5         # Racing Camera zoom
+TRACK_FIRST = True        # Set to True for whole track on first render
+MAX_TIME_NEW_TILE = 1.0   # limits allowed time (n*FPS) without progress
+MAX_TIME_GRASS = 2.0
 
-GRAY        = 0            # 0 for RGB, 1 grayscale, 2 green channel
-FPS         = 1/0.03       # Simulation Frames per second, timebase
+COLOR  = 0                # 0 for RGB, 1 grayscale, 2 green channel
+FPS    = 1/0.03           # Simulation Frames per second, timebase
 
-## after understanding car_dynamics, this model will really work BADLY in continous mode...
-## control actions= steering_angle, gas (throttle), brake_level
-## due to car_dynamics setup, d(gas)/dt is limited to 0.1 per Frame, braking >0.9 blocks wheels, only friction limited (1) currently
-## due to car_dynamics, steering saturates @+-0.42; it takes 7 steps to fully turn wheels either side from center @ steering >= 0.42
-## due to car_dynamics, the car presents lots of wheelspin. Gas < 1 might be a faster way to accelerate the car.
-DISCRETE    = False
-# center_steering and no gas/brake, left, right, accel, brake  
-#   --> actually a good choice, because car_dynamics softens the action's diff for gas and steering
-ACT = [[0, 0, 0], [-1, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 0.8]]
-## ACT2 is only usefull for actually driving outside the track without drifting around
+### Discretization
+## after investigating car_dynamics, is my understanding this model will really work BADLY in continous mode...
+# physics model control actions, can be simultaneous => steering_angle, gas (throttle), brake_level
+# due to car_dynamics setup, d(gas)/dt is limited to 0.1 per Frame, braking >=0.9 blocks wheels, only friction limited (1) currently
+# due to car_dynamics, steering saturates @+-0.4; it takes 7 steps to fully turn wheels either side from center @ steering >= 0.4
+# due to car_dynamics, the car presents lots of wheelspin. Gas < 1 might be a faster way to accelerate the car.
+
+# continuos action = (steering, throttle, brake)
+ACT = [[0, 0, 0], [-0.4, 0, 0], [0.4, 0, 0], [0, 1, 0], [0, 0, 0.8]]
+# discrete actions: center_steering and no gas/brake, left, right, accel, brake  
+#     --> actually a good choice, because car_dynamics softens the action's diff for gas and steering
+
+## ACT2 is only useful for actually driving outside the track without drifting around
 # center_steering and no gas/brake, left, right, accel, brake, half_left, half_right, half_accel, soft_brake   
-ACT2= [[0, 0, 0], [-1, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 0.8], [-0.2, 0, 0], [0.2, 0, 0], [0, 0.5, 0], [0, 0, 0.4]]
+ACT2= [[0, 0, 0], [-0.4, 0, 0], [0.4, 0, 0], [0, 0.8, 0], [0, 0, 0.8], [-0.2, 0, 0], [0.2, 0, 0], [0, 0.4, 0], [0, 0, 0.4]]
 
 ##REWARDS 
-# reward given each step: step, distance to centerline, speed
+# reward given each step: step, distance to centerline, speed, steer angle
 # reward given on new tile: % of advance
 # reward given at episode end: finished, patience exceeded, out of bounds, steps exceeded
-STD_REWARD = [-0.1, 0.0, 0.0, 1.0, 100, -20, -100, -50]
+# reward for obstacles:  obstacle hit (each step), obstacle collided (episode end)
+GYM_REWARD = [-0.1, 0.0, 0.0, 0.0,   10.0,     0,  -0, -100, -0,     -0, -0 ]
+STD_REWARD = [-0.1, 0.0, 0.0, 0.0,    1.0,   100, -20, -100, -50,    -0, -0 ]
+CONT_REWARD =[-0.1, 0.0, 0.0, 0.0,    1.0,   100, -20, -100, -50,    -5, -100 ]
 
 # Pablo's style indicators
-INDICATORS  = True
-H_INDI      = 4            # draw block heigth, total indicator bar 5 blocks
+INDICATORS = True
+H_INDI     = 4            # draw block heigth, total indicator bar 5 blocks
 
-# Track generation, same algorithm as original, slightly different lenght. Should not be incompatible
-TRACK_COMPL = 12           # general complexity of the track [4 to 20]
+### Track generation, same algorithm as original, slightly different lenght. Should not be incompatible
+# Try not to change these values, unexpected consequences may arise
 SCALE       = 6.0          # Track scale
-TRACK_RAD   = 1000/SCALE   # Track is heavily morphed circle with this radius
-PLAYFIELD   = 1250/SCALE   # Game over boundary
 TRACK_DETAIL_STEP = 21/SCALE
 TRACK_TURN_RATE = 0.31
-TRACK_WIDTH = 40/SCALE
 BORDER      = 8/SCALE
 BORDER_MIN_COUNT = 4
 ROAD_COLOR  = [0.4, 0.4, 0.4]
 GRASS_COLOR = [0.4 ,0.8 ,0.4]  #lighter grass patches uses [-0, +0.1, -0.]
-BORDER_COLOR= (1,   0.15,0)    #and white [1,1,1]
+BORDER_COLOR= (1,   0.15,0.0)  #and white [1,1,1]
+OBSTACLE_COLOR= [0.2,0.2,0.9]
+OILY_COLOR  = [0.2, 0.2, 0.2]
 ##color values taken from car_dynamics for reference, not to be changed here
 #HULL_COLOR  = (0.8, 0  , 0)
 #WHEEL_COLOR = (0.0, 0.0, 0.0)
 #WHEEL_WHITE = (0.3, 0.3, 0.3)
 #MUD_COLOR   = (0.4, 0.45,0.2) 
+
+# here you can play
+PLAYFIELD   = 1250/SCALE   # Game over boundary radius, at least 25% larger than TRACK_RAD
+TRACK_RAD   = 1000/SCALE   # Track is heavily morphed circle with this radius
+TRACK_COMPL = 12           # general geometrical complexity of the track, divides the circle in this much segments, to morph
+TRACK_WIDTH = 40/SCALE     # proportional track width, in pixels
 
 
 class FrictionDetector(contactListener):
@@ -128,23 +139,41 @@ class FrictionDetector(contactListener):
         if not tile:
             return
 
-        tile.color[0] = ROAD_COLOR[0]
-        tile.color[1] = ROAD_COLOR[1]
-        tile.color[2] = ROAD_COLOR[2]
+        if tile.typename != 'obstacle':
+            tile.color[0] = ROAD_COLOR[0]
+            tile.color[1] = ROAD_COLOR[1]
+            tile.color[2] = ROAD_COLOR[2]
+        # else:
+        #     tile.color[0] = 0.2
+        #     tile.color[1] = 0.2
+        #     tile.color[2] = 0.2
+            
         if not obj or "tiles" not in obj.__dict__:
             return
+        
         if begin:
-            obj.tiles.add(tile)
-            # print tile.road_friction, "ADD", len(obj.tiles)
-            if not tile.road_visited:
-                tile.road_visited = True
-                if self.env.t > 2/FPS:
-                    self.env.newtile = True                    
-                self.env.tile_visited_count += 1
-                self.env.last_touch_with_track = self.env.t
+            if tile.typename != 'obstacle':
+                obj.tiles.add(tile)
+                # print tile.road_friction, "ADD", len(obj.tiles)
+                if not tile.road_visited:
+                    tile.road_visited = True
+                    if self.env.t > 2/FPS:
+                        self.env.newtile = True                    
+                    self.env.tile_visited_count += 1
+                    self.env.last_new_tile = self.env.t
+            else:
+                print('obstacle hit')
+                self.env.obst_contact = True
+                self.env.obst_contact_count += 1
+                self.env.obst_contact_list.append(tile.id)
         else:
-            obj.tiles.remove(tile)
-            # print tile.road_friction, "DEL", len(obj.tiles) -- should delete to zero when on grass (this works)
+            if tile.typename != 'obstacle':
+                obj.tiles.remove(tile)
+                # print tile.road_friction, "DEL", len(obj.tiles) -- should delete to zero when on grass (this works)
+                # Registering last contact with track
+                self.env.last_touch_with_track = self.env.t
+            else:
+                self.env.obst_contact = False
 
 
 class CarRacing2(gym.Env, EzPickle):
@@ -169,8 +198,8 @@ class CarRacing2(gym.Env, EzPickle):
         self.road = None
         self.car = None
         self.newtile = False
-        self.reward = 0.0
-        self.action_taken = 1000
+        self.ep_return = 0.0
+        self.action_taken = +np.inf
         self.fd_tile = fixtureDef(
                 shape = polygonShape(vertices=
                     [(0, 0),(1, 0),(1, -1),(0, -1)]))
@@ -180,28 +209,45 @@ class CarRacing2(gym.Env, EzPickle):
         #self._org_config = deepcopy(kwargs)
     
     def _set_config(self, 
-            use_track = 1,                  # number of times to use the same track, [1-100]. More than 20 high risk of overfitting!!
-            episodes_per_track = 1,         # number of evenly distributed starting points on each track [1-20]
-            discre = ACT,                   # Action discretization function, None for continous
-            tr_complexity = TRACK_COMPL,    # generated track geometric complexity, [6-20]
-            tr_width = TRACK_WIDTH,         # relative track width, [30-50]
-            patience = MAX_TIME_NEW_TILE,   # Max time in secs without progress, [0.5-10]
-            indicators = INDICATORS,        # Show or not bottom info panel
-            gray_color = GRAY,              # State color option: 0 = RGB, 1 = Grayscale, 2 = Green only
-            frames_per_state = 1,           # stacked (history) frames on each state [1-inf]
-            skip_frames = 0,                # number of frames to skip on history, current observation always on first frame [0-4]
-            f_reward = STD_REWARD,          # reward funtion coeficients, refer to Docu for details
-            verbose = 1      ):
+            use_track = 1,                  # number of times to use the same Track, [1-100]. More than 20 high risk of overfitting!!
+            episodes_per_track = 1,         # number of evenly distributed Starting Points on each track [1-20]
+            discre = ACT,                   # Action discretization function, format [[steer0, throtle0, brake0], [steer1, ...], ...]. None for continous
+            tr_complexity = TRACK_COMPL,    # generated Track geometric Complexity, [6-20]
+            tr_width = TRACK_WIDTH,         # relative Track Width, [30-50]
+            patience = MAX_TIME_NEW_TILE,   # max time in secs without Progress, [0.5-20]
+            off_track = MAX_TIME_GRASS,     # max time in secs Driving on Grass, [0-5]
+            indicators = True,              # show or not bottom info Panel
+            game_color = 1,                 # State color option: 0 = RGB, 1 = Grayscale, 2 = Green only
+            frames_per_state = 1,           # stacked (history) Frames on each state [1-inf]
+            skip_frames = 0,                # number of Frames to skip on history, latest observation always on first Frame [0-4]
+            f_reward = CONT_REWARD,         # Reward Funtion coeficients, refer to Docu for details
+            num_obstacles = 5,              # Obstacle objects randomly placed on track [0-10]
+            end_on_contact = False,         # stop episode on contact with obstacle, not recommended for starting-phase of training
+            obst_location = 0,              # array pre-setting obstacle Location, in %track. Negative value means tracks's left-hand side. 0 for random location
+            oily_patch = False,             # use obstacle as Low-friction road (oily patch)
+            verbose = 2      ):
         
         #Verbosity
         self.verbose = verbose
 
+        #obstacles        
+        self.num_obstacles = np.clip(num_obstacles, 0, 10)
+        self.end_on_contact = end_on_contact        
+        self.oily_patch = oily_patch
+        if obst_location != 0 and len(obst_location) < num_obstacles:
+            print("#####################################")
+            print("Warning: incomplete obstacle location")
+            print("Defaulting to random placement")
+            self.obst_location = 0 #None
+        else:
+            self.obst_location = np.array(obst_location)
+        
         #reward coefs verification
-        if len(f_reward) < len(STD_REWARD):
+        if len(f_reward) < len(CONT_REWARD):
             print("####################################")
             print("Warning: incomplete reward function")
-            print("Defaulting to std function!!!")
-            self.f_reward = STD_REWARD
+            print("Defaulting to predefined function!!!")
+            self.f_reward = CONT_REWARD
         else:
             self.f_reward = f_reward
 
@@ -220,13 +266,15 @@ class CarRacing2(gym.Env, EzPickle):
         self.tr_width = np.clip(tr_width, 30, 50)/SCALE
 
         # Max time without progress
-        self.patience = np.clip(patience, 0.5, 10)
+        self.patience = np.clip(patience, 0.5, 20)
+        # Max time off-track
+        self.off_track = np.clip(off_track, 0, 5)
 
         # Show or not bottom info panel
         self.indicators = indicators
 
         # Grayscale and acceptable frames
-        self.grayscale = gray_color
+        self.grayscale = game_color
         if not self.grayscale: 
             if frames_per_state > 1:
                 print("####################################")
@@ -247,11 +295,11 @@ class CarRacing2(gym.Env, EzPickle):
         # Gym spaces, observation and action    
         self.discre = discre
         if discre==None:
-            self.action_space = spaces.Box(np.array([-1,0,0]), np.array([+1,+1,+1]), dtype=np.float32)  # steer, gas, brake
+            self.action_space = spaces.Box(np.array([-0.4,0,0]), np.array([+0.4,+1,+1]), dtype=np.float32)  # steer, gas, brake
         else:
             self.action_space = spaces.Discrete(len(discre)) 
         
-        if gray_color:
+        if game_color:
             self.observation_space = spaces.Box(low=0, high=255, shape=(STATE_H, STATE_W, self.frames_per_state), dtype=np.uint8)
         else:
             self.observation_space = spaces.Box(low=0, high=255, shape=(STATE_H, STATE_W, 3), dtype=np.uint8)
@@ -361,7 +409,7 @@ class CarRacing2(gym.Env, EzPickle):
             elif pass_through_start and i1==-1:
                 i1 = i
                 break
-        if self.verbose == 1:
+        if self.verbose > 0:
             print("Track generation: %i..%i -> %i-tiles track, complex %i" % (i1, i2, i2-i1, self.complexity))
         assert i1!=-1
         assert i2!=-1
@@ -395,18 +443,31 @@ class CarRacing2(gym.Env, EzPickle):
             for neg in range(BORDER_MIN_COUNT):
                 border[i-neg] |= border[i]
         
+        # Get random tile for obstacles, without replacement
+        if np.sum(self.obst_location) == 0:
+            obstacle_tiles_ids = np.random.choice(range(10, len(track)-6), self.num_obstacles, replace=False)
+            obstacle_tiles_ids *= (np.random.randint(0,2,self.num_obstacles)*2-1)
+            #obstacle_tiles_ids[0] = 4
+        else:
+            obstacle_tiles_ids = np.rint(self.obst_location*len(track)/100).astype(int)
+            obstacle_tiles_ids = obstacle_tiles_ids[0:self.num_obstacles]
+        if self.verbose >= 2:
+            print(self.num_obstacles, ' obstacles on tiles: ', obstacle_tiles_ids[np.argsort(np.abs(obstacle_tiles_ids))] )
+
+        #stores values and call tile generation
         self.border = border
         self.track = track
         self.waypoints = np.asarray(waypoint)
+        self.obstacle_tiles_ids = obstacle_tiles_ids
         self._create_tiles(track, border)
         
         return True  #self.waypoint #True
 
     def _give_track(self):
-        return self.track, self.waypoints
+        return self.track, self.waypoints, self.obstacles_poly
 
     def _create_tiles(self, track, border):
-        # first you need to clear
+        # first you need to clear everything
         if self.road is not None:
             for t in self.road:
                 self.world.DestroyBody(t)
@@ -428,6 +489,7 @@ class CarRacing2(gym.Env, EzPickle):
             c = 0.02*(i%3)
             t.color = [ROAD_COLOR[0] + c, ROAD_COLOR[1] + c, ROAD_COLOR[2] + c]
             t.road_visited = False
+            t.typename = 'tile'
             t.road_friction = 1.0
             t.fixtures[0].sensor = True
             self.road_poly.append(( [road1_l, road1_r, road2_r, road2_l], t.color ))
@@ -439,7 +501,54 @@ class CarRacing2(gym.Env, EzPickle):
                 b2_l = (x2 + side* self.tr_width        *math.cos(beta2), y2 + side* self.tr_width        *math.sin(beta2))
                 b2_r = (x2 + side*(self.tr_width+BORDER)*math.cos(beta2), y2 + side*(self.tr_width+BORDER)*math.sin(beta2))
                 self.road_poly.append(( [b1_l, b1_r, b2_r, b2_l], (1,1,1) if i%2==0 else BORDER_COLOR ))
+        
+        #create obstacles tiles
+        if self.num_obstacles:
+            self._create_obstacles()
 
+    def _create_obstacles(self):
+        # Create obstacle (blue rectangle of fixed width and randomish position in tile)
+        count=1
+        self.obstacles_poly = []
+        width = self.tr_width/2
+        obst_len = 3 if self.oily_patch else 1
+        for idx in self.obstacle_tiles_ids:
+            if idx < 0:
+                idx = -idx
+                alpha1, beta1, x1, y1 = self.track[idx]
+                alpha2, beta2, x2, y2 = self.track[idx+obst_len]
+                p1 = (x1 - width*math.cos(beta1), y1 - width*math.sin(beta1))
+                p2 = (x1, y1)
+                p3 = (x2, y2)
+                p4 = (x2 - width*math.cos(beta2), y2 - width*math.sin(beta2))
+            else:
+                alpha1, beta1, x1, y1 = self.track[idx]
+                alpha2, beta2, x2, y2 = self.track[idx+obst_len]
+                p1 = (x1, y1)
+                p2 = (x1 + width*math.cos(beta1), y1 + width*math.sin(beta1))
+                p3 = (x2 + width*math.cos(beta2), y2 + width*math.sin(beta2))
+                p4 = (x2, y2)
+
+            vertices = [p1,p2,p3,p4]
+            
+            # Add it to obstacles, Add it to poly_obstacles
+            t = self.world.CreateStaticBody(fixtures=fixtureDef(shape=polygonShape(vertices=vertices)))
+            t.userData = t
+            if self.oily_patch:
+                t.color = OILY_COLOR 
+                t.road_friction = 0.2
+            else:
+                t.color = OBSTACLE_COLOR 
+                t.road_friction = 1.0
+            t.typename = 'obstacle'
+            t.road_visited = False
+            t.id = count
+            t.tile_id = idx
+            t.fixtures[0].sensor = True
+            self.road.append(t)
+            self.obstacles_poly.append(( vertices, t.color ))
+            count += 1
+    
     def _closest_node(self, node, nodes):
         #nodes = np.asarray(nodes)
         deltas = nodes - node
@@ -454,14 +563,12 @@ class CarRacing2(gym.Env, EzPickle):
 
     def _render_road(self):
         gl.glBegin(gl.GL_QUADS)
-        #gl.glColor4f(0.4, 0.8, 0.4, 1.0)
         gl.glColor4f(GRASS_COLOR[0], GRASS_COLOR[1], GRASS_COLOR[2], 1.0)
         gl.glVertex3f(-PLAYFIELD, +PLAYFIELD, 0)
         gl.glVertex3f(+PLAYFIELD, +PLAYFIELD, 0)
         gl.glVertex3f(+PLAYFIELD, -PLAYFIELD, 0)
         gl.glVertex3f(-PLAYFIELD, -PLAYFIELD, 0)
         
-        #gl.glColor4f(0.4, 0.9, 0.4, 1.0)
         gl.glColor4f(GRASS_COLOR[0]-0, GRASS_COLOR[1]+0.1, GRASS_COLOR[2]-0, 1.0)
         k = PLAYFIELD/20.0
         for x in range(-20, 20, 2):
@@ -475,7 +582,18 @@ class CarRacing2(gym.Env, EzPickle):
             gl.glColor4f(color[0], color[1], color[2], 1)
             for p in poly:
                 gl.glVertex3f(p[0], p[1], 0)
+        
+        if self.num_obstacles > 0:
+            self._render_obstacles()
+        
         gl.glEnd()
+
+    def _render_obstacles(self):
+        #Can only be called inside a glBegin!!!
+        for poly, color in self.obstacles_poly:    # drawing road old way
+            gl.glColor4f(color[0], color[1], color[2], 1)
+            for p in poly:
+                gl.glVertex3f(p[0], p[1], 0)
 
     def _render_indicators(self, W, H):
         def vertical_ind(place, val, color):
@@ -516,15 +634,19 @@ class CarRacing2(gym.Env, EzPickle):
         gl.glEnd()
         
         #total_reward
-        self.score_label.text = "%02.1f" % self.reward
+        self.score_label.text = "%02.1f" % self.ep_return
         self.score_label.draw()
 
     def reset(self):
-        self.reward = 0.0
-        self.tile_visited_count = 0
+        self.ep_return = 0.0
         self.newtile = False
-        self.t = 0.0
+        self.tile_visited_count = 0
         self.last_touch_with_track = 0
+        self.last_new_tile = 0
+        self.obst_contact = False
+        self.obst_contact_count = 0
+        self.obst_contact_list=[]
+        self.t = 0.0
         self.steps_in_episode = 0
         self.state = np.zeros(self.observation_space.shape)
         self.internal_frames = self.skip_frames*(self.frames_per_state-1) +1
@@ -532,7 +654,7 @@ class CarRacing2(gym.Env, EzPickle):
         
         if self.track_use >= self.repeat_track*self.episodes_per_track: 
             intento=0
-            while intento < 50:
+            while intento < 21:
                 success = self._create_track()
                 intento += 1
                 if success:
@@ -541,7 +663,7 @@ class CarRacing2(gym.Env, EzPickle):
                     #print(self.episode_start)
                     break
                 if self.verbose > 0:
-                    print(intento," retry to generate new track (normal below 20, limit 50)")
+                    print(intento," retry to generate new track (normal below 10, limit 20)")
         else:
             self._create_tiles(self.track, self.border)
 
@@ -566,6 +688,7 @@ class CarRacing2(gym.Env, EzPickle):
     def reset_track(self):
         self.track_use = +np.inf
         self.reset()
+        return self.step(None)[0]
 
     def step(self, action):
         # Avoid first step with action=None, called from reset()
@@ -594,15 +717,16 @@ class CarRacing2(gym.Env, EzPickle):
         #self.state[:,:,0] = self.render("state_pixels") # Old code, only one frame
         self._update_state(self.render("state_pixels"))
 
-        ##REWARDS 
-        # reward given each step: step, distance to centerline, speed
+    ##REWARDS 
+        # reward given each step: step, distance to centerline, speed, steer angle
         # reward given on new tile: % of advance
         # reward given at episode end: finished, patience exceeded, out of bounds, steps exceeded
+        # reward for obstacles:  obstacle hit (each step), obstacle collided (episode end)
         x, y = self.car.hull.position
         true_speed = np.sqrt(np.square(self.car.hull.linearVelocity[0]) + np.square(self.car.hull.linearVelocity[1]))
         done = False
 
-        #reward each step        
+        #reward for each step taken       
         step_reward = self.f_reward[0]
 
         #reward distance to centerline, proportional to trackwidth
@@ -612,55 +736,78 @@ class CarRacing2(gym.Env, EzPickle):
         #reward for speed
         step_reward += self.f_reward[2]*true_speed
 
+        #reward for steer angle
+        step_reward += self.f_reward[3]*abs(self.car.wheels[0].joint.angle)
+        
+        #reward for collision with obstacle
+        step_reward += self.f_reward[9]*self.obst_contact
+
         #reward new tile touched
         if self.newtile:        
-            step_reward += self.f_reward[3]*100/len(self.track)
-            #reward function diminish, tt is time
-            #tt = (self.env.t - self.env.last_touch_with_track)  
-            #self.env.reward += np.clip((1 - 2*tt), -1, 1)
+            step_reward += self.f_reward[4]*100/len(self.track)
             self.newtile = False
 
-        #### calculates reward penalties, showstopper
-        ## check touched all tiles, to finish
-        if self.tile_visited_count==len(self.track):
-            step_reward += self.f_reward[4]
+        ## calculates reward penalties, showstopper
+        # check collision with obstacle
+        if self.end_on_contact and self.obst_contact:
+            step_reward = self.f_reward[10]
             done = True
             if self.verbose > 0:
-                print(self.track_use, " Finalized in Steps", self.steps_in_episode, 
-                      " with total reward", self.reward+step_reward)
+                print(self.track_use," ended by collision. Steps", self.steps_in_episode, 
+                      " %advance", int(self.tile_visited_count/len(self.track)*1000)/10,
+                      " played reward", int(100*self.ep_return)/100, " last penalty", step_reward)
+            if self.verbose > 2:
+                print(self.obst_contact_count, "  collided obstacles: ", self.obst_contact_list) 
 
         # if too many seconds lacking progress
-        if self.t - self.last_touch_with_track > self.patience:
-            step_reward = self.f_reward[5]
-            done = True
-            if self.verbose > 0:
-                print(self.track_use," cut by time without progress. Steps", 
-                      self.steps_in_episode, " %advance", int(self.tile_visited_count/len(self.track)*1000)/10,
-                      " played reward", int(100*self.reward)/100, " penalty", step_reward)
-        
-        #check out-of-bounds car position
-        if abs(x) > PLAYFIELD or abs(y) > PLAYFIELD:
+        if self.t - self.last_new_tile > self.patience:
             step_reward = self.f_reward[6]
             done = True
             if self.verbose > 0:
-                print(self.track_use," out of limits. Steps", 
-                      self.steps_in_episode, " %advance", int(self.tile_visited_count/len(self.track)*1000)/10,
-                      " played reward", int(100*self.reward)/100, " penalty", step_reward)
+                print(self.track_use," cut by time without progress. Steps", self.steps_in_episode, 
+                      " %advance", int(self.tile_visited_count/len(self.track)*1000)/10,
+                      " played reward", int(100*self.ep_return)/100, " last penalty", step_reward)
+        
+        # if too many seconds off-track
+        if self.t - self.last_touch_with_track > self.off_track:
+            step_reward = self.f_reward[6]
+            done = True
+            if self.verbose > 0:
+                print(self.track_use," cut by time off-track. Steps", self.steps_in_episode, 
+                      " %advance", int(self.tile_visited_count/len(self.track)*1000)/10,
+                      " played reward", int(100*self.ep_return)/100, " last penalty", step_reward)
 
-        #episode limit, as registered
-        if self.steps_in_episode >= 1000:
+        #check out-of-bounds car position
+        if abs(x) > PLAYFIELD or abs(y) > PLAYFIELD:
             step_reward = self.f_reward[7]
             done = True
             if self.verbose > 0:
-                print(self.track_use, " Episode ended in", self.steps_in_episode, 
-                      " steps, %advance", int(self.tile_visited_count/len(self.track)*1000)/10,
-                      " played reward", int(100*self.reward)/100, " penalty", step_reward)
+                print(self.track_use," out of limits. Steps", self.steps_in_episode, 
+                      " %advance", int(self.tile_visited_count/len(self.track)*1000)/10,
+                      " played reward", int(100*self.ep_return)/100, " last penalty", step_reward)
+
+        #episode limit, as registered
+        if self.steps_in_episode >= 2000:
+            step_reward = self.f_reward[8]
+            done = True
+            if self.verbose > 0:
+                print(self.track_use, " env max steps reached", self.steps_in_episode, 
+                      " %advance", int(self.tile_visited_count/len(self.track)*1000)/10,
+                      " played reward", int(100*self.ep_return)/100, " last penalty", step_reward)
+
+        # check touched all tiles, to finish
+        if self.tile_visited_count==len(self.track):
+            step_reward = self.f_reward[5]
+            done = True
+            if self.verbose > 0:
+                print(self.track_use, " Finalized in Steps", self.steps_in_episode, 
+                      " with return=total_reward", self.ep_return+step_reward)
 
         #clear reward if no action intended, from reset
         if action is None: step_reward = 0
             
         #internal counting reward, for display
-        self.reward += step_reward
+        self.ep_return += step_reward
               
         return self.state, step_reward, done, {}   #{'episode', self.tile_visited_count/len(self.track)} 
 

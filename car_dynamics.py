@@ -148,7 +148,8 @@ class Car:
             grass = True
             friction_limit = FRICTION_LIMIT*0.6  # Grass friction if no tile
             for tile in w.tiles:
-                friction_limit = max(friction_limit, FRICTION_LIMIT*tile.road_friction)
+#                friction_limit = max(friction_limit, FRICTION_LIMIT*tile.road_friction)
+                friction_limit = FRICTION_LIMIT*tile.road_friction
                 grass = False
 
             # Force

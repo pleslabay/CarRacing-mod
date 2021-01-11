@@ -6,6 +6,6 @@ try:
     from gym.envs.box2d.car_racing_old import CarRacing
     from gym.envs.box2d.car_racing_discre import CarRacing as CarRacing1
     from gym.envs.box2d.car_racing_pab import CarRacing2
-    from gym.envs.box2d.car_racing_obst import CarRacing2 as CarRacing3
+    from gym.envs.box2d.car_racing_obst import CarRacing3 as CarRacing3
 except ImportError:
     Box2D = None
